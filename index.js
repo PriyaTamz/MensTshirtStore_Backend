@@ -1,7 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import cookieParser from 'cookie-parser';
+import cookieParser from "cookie-parser";
 import connectDB from "./Database/config.js";
 import adminRouter from "./Router/AdminRouter.js";
 import userRouter from "./Router/UserRouter.js";
@@ -14,15 +14,24 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({
-  origin: "http://localhost:3001",
-  credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// Update CORS to allow frontend origin (adjust port if frontend runs on 3000)
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:3000"], // Allow both possible frontend ports
+    credentials: true,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
-app.use(express.json()); 
-app.use(cookieParser()); 
+app.use(express.json());
+app.use(cookieParser());
+
+// Log all incoming requests for debugging
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 connectDB();
 
@@ -30,14 +39,20 @@ app.get("/", (req, res) => {
   res.send("Welcome to server");
 });
 
-app.use('/api/admin', adminRouter);
-app.use('/api/user', userRouter);
-app.use('/api/product', productRouter);
-app.use('/api/cart', cartRouter);
-app.use('/api/address', addressRouter);
-app.use('/api/order', orderRouter);
+// Routes
+app.use("/api/admin", adminRouter);
+app.use("/api/user", userRouter);
+app.use("/api/product", productRouter);
+app.use("/api/cart", cartRouter);
+app.use("/api/address", addressRouter);
+app.use("/api/order", orderRouter);
 
-const PORT = process.env.PORT || 5000;
+// Handle 404 errors
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Endpoint not found" });
+});
+
+const PORT = process.env.PORT || 5173; // Use 5173 to match frontend expectation
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

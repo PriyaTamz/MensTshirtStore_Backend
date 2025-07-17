@@ -1,8 +1,22 @@
 import User from "../Model/User.js";
 import jwt from "jsonwebtoken";
 import axios from "axios";
+import dotenv from "dotenv";
 
-const JWT_SECRET = "apple";
+dotenv.config();
+const JWT_SECRET = process.env.JWT_SECRET || "apple";
+
+// Helper function for phone validation
+const validatePhone = (phone) => {
+  const phoneRegex = /^[6-9]\d{9}$/;
+  return phoneRegex.test(phone);
+};
+
+// Helper function for email validation
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
 
 export const userRegister = async (req, res) => {
   try {
@@ -10,32 +24,75 @@ export const userRegister = async (req, res) => {
 
     // Validation
     if (!firstName || !lastName || !phone || !email) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields are required" 
+      });
     }
 
-    const existingUser = await User.findOne({ email });
+    if (!validatePhone(phone)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid phone number format (10 digits required)" 
+      });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid email format" 
+      });
+    }
+
+    // Check existing user
+    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
-      return res.status(400).json({ message: "Email already exists" });
+      return res.status(400).json({ 
+        success: false,
+        message: "User with this email or phone already exists" 
+      });
     }
 
-    const existingPhoneUser = await User.findOne({ phone });
-    if (existingPhoneUser) {
-      return res.status(400).json({ message: "Phone number already exists" });
-    }
-
+    // Create new user
     const newUser = new User({
       firstName,
       lastName,
       phone,
       email,
       role: "user",
+      isVerified: false,
     });
 
     await newUser.save();
 
-    res.status(201).json({ message: "User registered successfully" });
+    // Send OTP via SMS
+    const otpResponse = await sendOtpViaSms(newUser.phone);
+    if (!otpResponse.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP via SMS"
+      });
+    }
+
+    // Save OTP session
+    newUser.otpSession = otpResponse.sessionId;
+    newUser.otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
+    await newUser.save();
+
+    res.status(201).json({ 
+      success: true,
+      message: "Registration successful. OTP sent via SMS.",
+      data: {
+        userId: newUser._id,
+        sessionId: otpResponse.sessionId
+      }
+    });
+
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: "Server error: " + error.message 
+    });
   }
 };
 
@@ -43,101 +100,149 @@ export const requestOtp = async (req, res) => {
   try {
     const { phone } = req.body;
 
-    // Basic validation
     if (!phone) {
-      return res
-        .status(400)
-        .json({ message: "Phone and password are required" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Phone number is required" 
+      });
     }
 
-    const phoneRegex = /^[6-9]\d{9}$/;
-    if (!phoneRegex.test(phone)) {
-      return res.status(400).json({ message: "Invalid phone number format" });
+    if (!validatePhone(phone)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid phone number format" 
+      });
     }
 
-    const user = await User.findOne({ phone, role: "user" });
+    const user = await User.findOne({ phone });
     if (!user) {
-      return res
-        .status(404)
-        .json({ message: "Invalid credentials or not an admin" });
+      return res.status(404).json({ 
+        success: false,
+        message: "User not found" 
+      });
     }
 
-    // Send OTP via 2Factor
-    const response = await axios.get(
-      `https://2factor.in/API/V1/${process.env.TWO_FACTOR_API_KEY}/SMS/${phone}/AUTOGEN`
-    );
-
-    if (response.data.Status !== "Success") {
-      return res.status(500).json({ message: "OTP send failed" });
+    // Send OTP via SMS
+    const otpResponse = await sendOtpViaSms(user.phone);
+    if (!otpResponse.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP via SMS"
+      });
     }
 
-    // Save session ID to verify later
-    user.otpSession = response.data.Details;
-    user.otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    // Save OTP session
+    user.otpSession = otpResponse.sessionId;
+    user.otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiry
     await user.save();
 
-    res
-      .status(200)
-      .json({
-        message: "OTP sent successfully",
-        sessionId: response.data.Details,
-      });
+    res.status(200).json({
+      success: true,
+      message: "OTP sent via SMS successfully",
+      data: {
+        sessionId: otpResponse.sessionId
+      }
+    });
+
   } catch (error) {
-    res.status(500).json({ message: "Server Error: " + error.message });
+    res.status(500).json({ 
+      success: false,
+      message: "Server error: " + error.message 
+    });
   }
 };
 
 export const verifyOtp = async (req, res) => {
   try {
-    const { phone, otp } = req.body;
+    const { phone, otp, userId } = req.body;
 
     if (!phone || !otp) {
-      return res.status(400).json({ message: "Phone and OTP are required" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Phone and OTP are required" 
+      });
     }
 
-    const user = await User.findOne({ phone });
+    let user;
+    if (userId) {
+      user = await User.findById(userId);
+    } else {
+      user = await User.findOne({ phone });
+    }
+
     if (!user || !user.otpSession) {
-      return res
-        .status(404)
-        .json({ message: "Session not found. Please request OTP again." });
+      return res.status(404).json({ 
+        success: false,
+        message: "OTP session not found" 
+      });
     }
 
     if (user.otpExpires < new Date()) {
-      return res
-        .status(401)
-        .json({ message: "OTP expired. Please request a new one." });
+      return res.status(401).json({ 
+        success: false,
+        message: "OTP expired" 
+      });
     }
 
+    // Verify OTP with 2Factor
     const response = await axios.get(
       `https://2factor.in/API/V1/${process.env.TWO_FACTOR_API_KEY}/SMS/VERIFY/${user.otpSession}/${otp}`
     );
 
     if (response.data.Status !== "Success") {
-      return res.status(401).json({ message: "Invalid or expired OTP" });
+      return res.status(401).json({ 
+        success: false,
+        message: "Invalid OTP" 
+      });
     }
 
+    // Update user status
     user.otpSession = null;
+    user.otpExpires = null;
+    if (userId) user.isVerified = true;
     await user.save();
 
-    const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: "1d" });
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        id: user._id, 
+        role: user.role,
+        isVerified: user.isVerified
+      }, 
+      JWT_SECRET, 
+      { expiresIn: process.env.JWT_EXPIRE || "1d" }
+    );
 
+    // Set cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "None",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      maxAge: 24 * 60 * 60 * 1000
     });
 
     res.status(200).json({
-      message: "Login successful",
-      token,
-      id: user._id,
-      phone: user.phone,
-      role: user.role,
-      firstName: user.firstName,
-      lastName: user.lastName,
+      success: true,
+      message: "OTP verified successfully",
+      data: {
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          isVerified: user.isVerified
+        }
+      }
     });
+
   } catch (error) {
-    res.status(500).json({ message: "Server Error: " + error.message });
+    res.status(500).json({ 
+      success: false,
+      message: "Server error: " + error.message 
+    });
   }
 };
 
@@ -145,12 +250,88 @@ export const userLogout = async (req, res) => {
   try {
     res.clearCookie("token", {
       httpOnly: true,
-      secure: true,
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
     });
 
-    res.status(200).json({ message: "User logged out successfully" });
+    res.status(200).json({ 
+      success: true,
+      message: "Logged out successfully" 
+    });
+
   } catch (error) {
-    res.status(500).json({ message: "Logout failed", error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: "Logout failed: " + error.message 
+    });
   }
 };
+
+export const checkAuthStatus = async (req, res) => {
+  try {
+    const token = req.cookies.token;
+    
+    if (!token) {
+      return res.status(200).json({ 
+        success: false,
+        isAuthenticated: false 
+      });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+
+    if (!user) {
+      return res.status(200).json({ 
+        success: false,
+        isAuthenticated: false 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      isAuthenticated: true,
+      data: {
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          isVerified: user.isVerified
+        }
+      }
+    });
+
+  } catch (error) {
+    res.status(200).json({ 
+      success: false,
+      isAuthenticated: false 
+    });
+  }
+};
+
+// Helper function to send OTP via SMS only (no phone call)
+async function sendOtpViaSms(phone) {
+  try {  
+    // Using 2Factor.in SMS API with template OTP1 (autogenerated OTP)
+    const response = await axios.get(
+      `https://2factor.in/API/V1/${process.env.TWO_FACTOR_API_KEY}/SMS/${phone}/AUTOGEN/OTP1`
+    );
+
+    if (response.data.Status !== "Success") {
+      console.error("Failed to send OTP via SMS:", response.data);
+      return { success: false };
+    }
+
+    return {
+      success: true,
+      sessionId: response.data.Details
+    };
+
+  } catch (error) {
+    console.error("Error sending OTP via SMS:", error.message);
+    return { success: false };
+  }
+}
