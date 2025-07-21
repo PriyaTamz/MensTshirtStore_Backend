@@ -2,8 +2,7 @@ import Admin from "../Model/Admin.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
-const JWT_SECRET = "apple";
-
+// Register a new admin
 export const adminRegister = async (req, res) => {
   try {
     const { username, password, confirmPassword } = req.body;
@@ -26,26 +25,27 @@ export const adminRegister = async (req, res) => {
     const newAdmin = new Admin({
       username,
       password: hashedPassword,
-      role: "admin",
+      role: "admin", // Explicitly set role to 'admin'
     });
 
     await newAdmin.save();
 
     res.status(201).json({ message: "Admin registered successfully" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
+// Login an admin
 export const adminLogin = async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Basic validation
     if (!username || !password) {
       return res.status(400).json({ message: "Username and password are required" });
     }
 
+    // Find the user and ensure they have the 'admin' role
     const admin = await Admin.findOne({ username, role: "admin" });
 
     if (!admin) {
@@ -57,14 +57,19 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Incorrect password" });
     }
 
-    const token = jwt.sign({ id: admin._id, role: admin.role }, JWT_SECRET, {
-      expiresIn: "1d",
-    });
+    const token = jwt.sign(
+      { id: admin._id, role: admin.role },
+      process.env.JWT_SECRET, // Use secret from .env file
+      {
+        expiresIn: "1d",
+      }
+    );
 
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "None"
+      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+      sameSite: "None", // Necessary for cross-origin requests
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
 
     res.status(200).json({
@@ -75,16 +80,19 @@ export const adminLogin = async (req, res) => {
       id: admin._id,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
+// Logout an admin
 export const adminLogout = async (req, res) => {
   try {
-    res.clearCookie("token", {
+    // Clear the cookie
+    res.cookie("token", "", {
       httpOnly: true,
-      secure: true,
-      sameSite: "strict",
+      expires: new Date(0), // Set expiry to a past date
+      secure: process.env.NODE_ENV === 'production', // Must match login settings
+      sameSite: "None", // Must match login settings
     });
 
     res.status(200).json({ message: "Admin logged out successfully" });
@@ -92,3 +100,5 @@ export const adminLogout = async (req, res) => {
     res.status(500).json({ message: "Logout failed", error: error.message });
   }
 };
+
+

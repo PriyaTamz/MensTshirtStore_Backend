@@ -14,10 +14,10 @@ dotenv.config();
 
 const app = express();
 
-// Update CORS to allow frontend origin (adjust port if frontend runs on 3000)
+// Update CORS to allow frontend origin
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"], // Allow both possible frontend ports
+    origin: ["http://localhost:5173", "http://localhost:3000"], // Allow frontend origins
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -29,7 +29,7 @@ app.use(cookieParser());
 
 // Log all incoming requests for debugging
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  // console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
@@ -52,7 +52,7 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: "Endpoint not found" });
 });
 
-const PORT = process.env.PORT || 5173; // Use 5173 to match frontend expectation
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

@@ -1,31 +1,31 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = "apple";
-
+// Middleware to check if the user is authenticated
 export const isAuthenticated = (req, res, next) => {
-  //console.log("Cookies:", req.cookies);
-  const token = req.cookies.token;
+  const { token } = req.cookies;
 
   if (!token) {
-    return res.status(401).json({ message: "Not authenticated" });
+    return res.status(401).json({ message: "Not authenticated. Please login." });
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // contains id and role
+    // Verify the token using the secret from your .env file
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // The decoded payload (e.g., { id, role }) is attached to the request
     next();
   } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
+    return res.status(401).json({ message: "Invalid or expired token." });
   }
 };
 
-export const authorizeRoles = (roles) => {
+// Middleware to authorize roles
+export const authorizeRoles = (...roles) => {
   return (req, res, next) => {
-    // console.log('User role:', req.user?.role);
+    // req.user is available because isAuthenticated runs first
     if (!req.user || !roles.includes(req.user.role)) {
-      return res
-        .status(403)
-        .json({ message: "Access denied: insufficient privileges" });
+      return res.status(403).json({
+        message: `Access denied. Role '${req.user.role}' is not authorized for this resource.`,
+      });
     }
     next();
   };
