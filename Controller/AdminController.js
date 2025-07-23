@@ -25,80 +25,80 @@ export const adminRegister = async (req, res) => {
     const newAdmin = new Admin({
       username,
       password: hashedPassword,
-      role: "admin", // Explicitly set role to 'admin'
+      role: "admin",
     });
 
     await newAdmin.save();
-
     res.status(201).json({ message: "Admin registered successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Login an admin
+// Login
 export const adminLogin = async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({ message: "Username and password are required" });
-    }
-
-    // Find the user and ensure they have the 'admin' role
     const admin = await Admin.findOne({ username, role: "admin" });
-
-    if (!admin) {
-      return res.status(404).json({ message: "Invalid credentials or not an admin" });
-    }
+    if (!admin) return res.status(404).json({ message: "Admin not found" });
 
     const passwordMatch = await bcrypt.compare(password, admin.password);
-    if (!passwordMatch) {
-      return res.status(401).json({ message: "Incorrect password" });
-    }
+    if (!passwordMatch) return res.status(401).json({ message: "Incorrect password" });
 
     const token = jwt.sign(
       { id: admin._id, role: admin.role },
-      process.env.JWT_SECRET, // Use secret from .env file
-      {
-        expiresIn: "1d",
-      }
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
     );
 
-    res.cookie("token", token, {
+    res.cookie("adminToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-      sameSite: "None", // Necessary for cross-origin requests
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
       maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
 
     res.status(200).json({
       message: "Login successful",
-      token: token,
-      role: admin.role,
-      username: admin.username,
-      id: admin._id,
+      admin: {
+        id: admin._id,
+        username: admin.username,
+        role: admin.role,
+      },
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Logout an admin
-export const adminLogout = async (req, res) => {
-  try {
-    // Clear the cookie
-    res.cookie("token", "", {
-      httpOnly: true,
-      expires: new Date(0), // Set expiry to a past date
-      secure: process.env.NODE_ENV === 'production', // Must match login settings
-      sameSite: "None", // Must match login settings
-    });
-
-    res.status(200).json({ message: "Admin logged out successfully" });
-  } catch (error) {
-    res.status(500).json({ message: "Logout failed", error: error.message });
-  }
+// Logout
+export const adminLogout = (req, res) => {
+  res.cookie("adminToken", "", {
+    httpOnly: true,
+    expires: new Date(0),
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
+  res.status(200).json({ message: "Admin logged out successfully" });
 };
 
+// Check Auth
+export const checkAdminAuth = async (req, res) => {
+  try {
+    const token = req.cookies.adminToken;
+    if (!token) return res.status(401).json({ isAuthenticated: false, message: "No token provided" });
 
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const admin = await Admin.findById(decoded.id).select("-password");
+    if (!admin) return res.status(404).json({ isAuthenticated: false, message: "Admin not found" });
+
+    res.status(200).json({ 
+      isAuthenticated: true,
+      admin,
+      message: "Admin authenticated"
+    });
+  } catch (error) {
+    res.status(401).json({ isAuthenticated: false, message: "Invalid token", error: error.message });
+  }
+};
