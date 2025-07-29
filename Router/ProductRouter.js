@@ -11,7 +11,7 @@ productRouter.get('/:id', getProductById);
 
 // Protected routes for admin 
 productRouter.post('/create', isAuthenticated, authorizeRoles('admin'), upload.array("images", 5), addProduct);
-productRouter.put('/:id', isAuthenticated, authorizeRoles('admin'), updateProduct);
+productRouter.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.array("images", 5), updateProduct);
 productRouter.delete('/:id', isAuthenticated, authorizeRoles('admin'), deleteProduct);
 
 export default productRouter;

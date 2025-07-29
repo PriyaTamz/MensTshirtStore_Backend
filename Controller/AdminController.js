@@ -44,7 +44,8 @@ export const adminLogin = async (req, res) => {
     if (!admin) return res.status(404).json({ message: "Admin not found" });
 
     const passwordMatch = await bcrypt.compare(password, admin.password);
-    if (!passwordMatch) return res.status(401).json({ message: "Incorrect password" });
+    if (!passwordMatch)
+      return res.status(401).json({ message: "Incorrect password" });
 
     const token = jwt.sign(
       { id: admin._id, role: admin.role },
@@ -52,11 +53,18 @@ export const adminLogin = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    res.cookie("adminToken", token, {
+    /*res.cookie("adminToken", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });*/
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false, // true in production
+      sameSite: "Lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     res.status(200).json({
@@ -87,18 +95,30 @@ export const adminLogout = (req, res) => {
 export const checkAdminAuth = async (req, res) => {
   try {
     const token = req.cookies.adminToken;
-    if (!token) return res.status(401).json({ isAuthenticated: false, message: "No token provided" });
+    if (!token)
+      return res
+        .status(401)
+        .json({ isAuthenticated: false, message: "No token provided" });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const admin = await Admin.findById(decoded.id).select("-password");
-    if (!admin) return res.status(404).json({ isAuthenticated: false, message: "Admin not found" });
+    if (!admin)
+      return res
+        .status(404)
+        .json({ isAuthenticated: false, message: "Admin not found" });
 
-    res.status(200).json({ 
+    res.status(200).json({
       isAuthenticated: true,
       admin,
-      message: "Admin authenticated"
+      message: "Admin authenticated",
     });
   } catch (error) {
-    res.status(401).json({ isAuthenticated: false, message: "Invalid token", error: error.message });
+    res
+      .status(401)
+      .json({
+        isAuthenticated: false,
+        message: "Invalid token",
+        error: error.message,
+      });
   }
 };

@@ -20,11 +20,19 @@ export const addProduct = async (req, res) => {
     } = req.body;
 
     // ✅ Basic validation
-    if (!title || !price || !category || !size || !req.files || req.files.length === 0) {
+    if (!title || !price || !category || !size) {
+      return res.status(400).json({
+        message: "Title, price, category, size",
+      });
+    }
+
+    /*
+     if (!title || !price || !category || !size || !req.files || req.files.length === 0) {
       return res.status(400).json({
         message: "Title, price, category, size, and at least one image are required",
       });
     }
+       */
 
     // ✅ Upload each image to S3 and get the URL
     const uploadedImageUrls = await Promise.all(
@@ -87,6 +95,7 @@ export const getProductById = async (req, res) => {
   }
 };
 
+/*
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -101,6 +110,40 @@ export const updateProduct = async (req, res) => {
     const updatedProduct = await Product.findByIdAndUpdate(
       id,
       { $set: req.body },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      message: "Product updated successfully",
+      product: updatedProduct,
+    });
+  } catch (error) {
+    console.error("Update Product Error:", error);
+    res.status(500).json({ message: "Server Error: " + error.message });
+  }
+};
+*/
+
+export const updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if product exists
+    const existingProduct = await Product.findById(id);
+    if (!existingProduct) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const updateFields = { ...req.body };
+
+    if (req.files && req.files.length > 0) {
+      const imagePaths = req.files.map((file) => file.location || file.path); // adjust based on S3 or local
+      updateFields.images = imagePaths;
+    }
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
       { new: true, runValidators: true }
     );
 
