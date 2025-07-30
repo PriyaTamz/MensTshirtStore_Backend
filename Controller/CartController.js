@@ -2,7 +2,7 @@ import Cart from "../Model/Cart.js";
 
 export const getCart = async (req, res) => {
   try {
-    const cart = await Cart.findOne({ user: req.user.id });
+    const cart = await Cart.findOne({ user: req.user.id }).populate("items.product");
     if (!cart) return res.status(200).json({ items: [] });
 
     res.status(200).json(cart);
@@ -14,7 +14,7 @@ export const getCart = async (req, res) => {
 export const addToCart = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { productId, size, quantity } = req.body;
+    const { productId, size, color, quantity } = req.body;
 
     if (!productId || !quantity) {
       return res.status(400).json({ message: "Product and quantity required" });
@@ -28,13 +28,13 @@ export const addToCart = async (req, res) => {
 
     // Check if product with same size already in cart
     const existingItem = cart.items.find(
-      (item) => item.product.toString() === productId && item.size === size
+      (item) => item.product.toString() === productId && item.size === size && item.color === color
     );
 
     if (existingItem) {
       existingItem.quantity += quantity;
     } else {
-      cart.items.push({ product: productId, size, quantity });
+      cart.items.push({ product: productId, size, color, quantity });
     }
 
     cart.updatedAt = Date.now();
