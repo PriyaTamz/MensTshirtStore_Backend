@@ -48,9 +48,9 @@ export const addToCart = async (req, res) => {
 
 export const updateCartItem = async (req, res) => {
   try {
-    const { productId, size, quantity } = req.body;
+    const { productId, size, color, quantity } = req.body;
 
-    if (!productId || !size || !quantity) {
+    if (!productId || !size || !color || !quantity) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -58,7 +58,7 @@ export const updateCartItem = async (req, res) => {
     if (!cart) return res.status(404).json({ message: "Cart not found" });
 
     const item = cart.items.find(
-      (i) => i.product.toString() === productId && i.size === size
+      (i) => i.product.toString() === productId && i.size === size && i.color === color
     );
 
     if (!item) return res.status(404).json({ message: "Item not found in cart" });
