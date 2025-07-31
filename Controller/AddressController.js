@@ -4,10 +4,8 @@ export const addAddress = async (req, res) => {
   try {
     const {
       type,
-      firstName,
-      lastName,
+      fullName,
       address,
-      apartment,
       city,
       state,
       pincode,
@@ -15,8 +13,7 @@ export const addAddress = async (req, res) => {
     } = req.body;
 
     if (
-      !firstName ||
-      !lastName ||
+      !fullName ||
       !address ||
       !city ||
       !state ||
@@ -43,10 +40,8 @@ export const addAddress = async (req, res) => {
     const existingAddress = await Address.findOne({
       user: req.user.id,
       type,
-      firstName,
-      lastName,
+      fullName,
       address,
-      apartment,
       city,
       state,
       pincode,
@@ -109,10 +104,8 @@ export const updateAddress = async (req, res) => {
     // Update allowed fields
     const updateFields = {
       type: req.body.type,
-      firstName: req.body.firstName,
-      lastName: req.body.lastName,
+      fullName: req.body.fullName,
       address: req.body.address,
-      apartment: req.body.apartment,
       city: req.body.city,
       state: req.body.state,
       pincode: req.body.pincode,
