@@ -21,7 +21,7 @@ const orderSchema = new mongoose.Schema(
     method: { type: String, enum: ["cod", "razorpay"], required: true },
     status: {
       type: String,
-      enum: ["Initiated", "Pending", "Paid", "Failed", "Delivered"],
+      enum: ["Initiated", "Pending", "Paid", "Failed", "Delivered", "Refunded"],
       default: "Initiated",
     },
     razorpayOrderId: String,

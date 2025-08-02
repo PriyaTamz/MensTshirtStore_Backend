@@ -20,15 +20,23 @@ export const addToCart = async (req, res) => {
       return res.status(400).json({ message: "Product and quantity required" });
     }
 
-    let cart = await Cart.findOne({ user: userId });
+    const cart = await Cart.findOne({ user: userId });
 
     if (!cart) {
-      cart = new Cart({ user: userId, items: [] });
+      const newCart = new Cart({
+        user: userId,
+        items: [{ product: productId, size, color, quantity }]
+      });
+      await newCart.save();
+      return res.status(200).json({ message: "Cart created", cart: newCart });
     }
 
-    // Check if product with same size already in cart
+    // Check if item already exists
     const existingItem = cart.items.find(
-      (item) => item.product.toString() === productId && item.size === size && item.color === color
+      (item) =>
+        item.product.toString() === productId &&
+        item.size === size &&
+        item.color === color
     );
 
     if (existingItem) {
@@ -42,6 +50,10 @@ export const addToCart = async (req, res) => {
 
     res.status(200).json({ message: "Added to cart", cart });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: "Duplicate cart for user" });
+    }
+
     res.status(500).json({ message: error.message });
   }
 };

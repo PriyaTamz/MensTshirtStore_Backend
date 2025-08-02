@@ -2,6 +2,8 @@ import Order from "../Model/RazorpayOrder.js";
 import Cart from "../Model/Cart.js";
 import Address from "../Model/Address.js";
 import { razorpayInstance } from "../Utils/razorpay.js";
+import User from "../Model/User.js";
+import crypto from "crypto";
 
 export const checkoutOrder = async (req, res) => {
   try {
@@ -88,6 +90,8 @@ export const verifyRazorpayPayment = async (req, res) => {
       orderId,
     } = req.body;
 
+    //console.log("🔍 Incoming payload:", {razorpay_order_id,razorpay_payment_id,razorpay_signature,orderId });
+
     // Validate required fields
     if (
       !razorpay_order_id ||
@@ -106,6 +110,9 @@ export const verifyRazorpayPayment = async (req, res) => {
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
+    //console.log("✅ Generated Signature:", generatedSignature);
+    //console.log("✅ Received Signature:", razorpay_signature);
+
     // Compare signatures
     if (generatedSignature !== razorpay_signature) {
       return res.status(400).json({ message: "Invalid payment signature" });
@@ -122,48 +129,25 @@ export const verifyRazorpayPayment = async (req, res) => {
       { new: true }
     );
 
-    res
-      .status(200)
-      .json({ message: "Payment verified and order confirmed", order });
+    res.status(200).json({ message: "Payment verified and order confirmed", order });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Payment verification failed", error: error.message });
-  }
-};
-
-export const placeOrder = async (req, res) => {
-  try {
-    const { address, cartItems, totalAmount, method, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
-
-    const newOrder = new Order({
-      user: req.user.id,
-      address,
-      cartItems,
-      totalAmount,
-      method,
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature,
-      status: method === "cod" ? "Paid" : "Pending", // Assume COD is instantly paid
-    });
-
-    await newOrder.save();
-    res.status(201).json({ success: true, message: "Order placed successfully", order: newOrder });
-  } catch (err) {
-    console.error("Error placing order:", err);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    console.error("Error during Razorpay verification:", error);
+    res.status(500).json({ message: "Payment verification failed", error: error.message });
   }
 };
 
 export const getUserOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
-      .populate("cartItems.productId", "name price image")
+      .populate("cartItems.productId", "title price image")
       .populate("address")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, orders });
+    res.status(200).json({
+      success: true,
+      message: "Orders fetched successfully",
+      orders,
+    });
   } catch (err) {
     console.error("Error fetching user orders:", err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -192,18 +176,49 @@ export const updateOrderStatus = async (req, res) => {
 
     const order = await Order.findById(id);
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
 
     order.status = status;
     await order.save();
 
-    res.status(200).json({ success: true, message: "Order status updated", order });
+    res
+      .status(200)
+      .json({ success: true, message: "Order status updated", order });
   } catch (err) {
     console.error("Error updating order:", err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
+
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({}, "name email phone createdAt");
+
+    // Fetch addresses for each user
+    const userDataWithAddress = await Promise.all(
+      users.map(async (user) => {
+        const addresses = await Address.find({ user: user._id });
+        return {
+          ...user.toObject(),
+          addresses,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "All users fetched successfully",
+      users: userDataWithAddress,
+    });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
 
 export const returnProduct = async (req, res) => {
   try {
@@ -220,12 +235,27 @@ export const returnProduct = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    // Check if order is within return window (7 days)
+    const orderDate = new Date(order.createdAt);
+    const today = new Date();
+    const diffInDays = (today - orderDate) / (1000 * 60 * 60 * 24);
+    
+    if (diffInDays > 7) {
+      return res
+        .status(400)
+        .json({ message: "Return period expired. You can only return within 7 days." });
+    }
+
     const item = order.cartItems.find(
       (item) => item.productId.toString() === productId.toString()
     );
 
     if (!item) {
       return res.status(404).json({ message: "Product not found in order" });
+    }
+
+    if (item.returnRequested) {
+      return res.status(400).json({ message: "Return already requested for this product" });
     }
 
     item.returnRequested = true;
@@ -245,7 +275,9 @@ export const refundPayment = async (req, res) => {
     const { orderId, paymentId, amount } = req.body;
 
     if (!orderId || !paymentId) {
-      return res.status(400).json({ message: "Order ID and payment ID are required" });
+      return res
+        .status(400)
+        .json({ message: "Order ID and payment ID are required" });
     }
 
     const order = await Order.findById(orderId);
@@ -258,7 +290,9 @@ export const refundPayment = async (req, res) => {
     }
 
     if (order.status !== "Paid") {
-      return res.status(400).json({ message: "Order not paid yet, cannot refund" });
+      return res
+        .status(400)
+        .json({ message: "Order not paid yet, cannot refund" });
     }
 
     const refund = await razorpayInstance.payments.refund(paymentId, {
@@ -275,7 +309,7 @@ export const refundPayment = async (req, res) => {
 
     res.status(200).json({ message: "Refund successful", refund });
   } catch (error) {
+    console.error("Refund error:", error);
     res.status(500).json({ message: "Refund failed", error: error.message });
   }
 };
-

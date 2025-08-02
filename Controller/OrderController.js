@@ -1,40 +1,4 @@
-import Order from "../Model/RazorpayOrder.js";
-
-export const placeOrder = async (req, res) => {
-  try {
-    const {
-      contact,
-      shippingAddress,
-      billingAddress,
-      cartItems,
-      totalAmount,
-      method,
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature,
-    } = req.body;
-
-    const order = new Order({
-      user: req.user.id, // must be authenticated
-      contact,
-      shippingAddress,
-      billingAddress,
-      cartItems,
-      totalAmount,
-      method,
-      status: method === "cod" ? "Pending" : "Paid",
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature,
-    });
-
-    await order.save();
-
-    res.status(201).json({ message: "Order placed successfully", order });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to place order", error: error.message });
-  }
-};
+/*import Order from "../Model/RazorpayOrder.js";
 
 export const getUserOrders = async (req, res) => {
   try {
@@ -76,3 +40,4 @@ export const updateOrderStatus = async (req, res) => {
     res.status(500).json({ message: "Failed to update order status", error: error.message });
   }
 };
+*/
