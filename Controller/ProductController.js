@@ -2,49 +2,32 @@ import Product from "../Model/Product.js";
 import User from "../Model/User.js";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
-import s3 from "../Utils/s3.js";
+import cloudinary from "../Utils/cloudinary.js";
+import fs from "fs";
 
 const JWT_SECRET = "apple";
 
 export const addProduct = async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      price,
-      stock,
-      category,
-      size,
-      colors,
-      tags,
-    } = req.body;
+    const { title, description, price, stock, category, size, colors, tags } = req.body;
 
-    // ✅ Basic validation
     if (!title || !price || !category || !size) {
       return res.status(400).json({
-        message: "Title, price, category, size",
+        message: "Title, price, category, size are required",
       });
     }
 
-    /*
-     if (!title || !price || !category || !size || !req.files || req.files.length === 0) {
-      return res.status(400).json({
-        message: "Title, price, category, size, and at least one image are required",
-      });
-    }
-       */
-
-    // ✅ Upload each image to S3 and get the URL
     const uploadedImageUrls = await Promise.all(
-      req.files.map((file) => {
-        const params = {
-          Bucket: process.env.S3_BUCKET_NAME,
-          Key: `${uuidv4()}-${file.originalname}`,
-          Body: file.buffer,
-          ContentType: file.mimetype,
-          ACL: "public-read",
-        };
-        return s3.upload(params).promise().then((data) => data.Location);
+      req.files.map(async (file) => {
+        const result = await cloudinary.uploader.upload(file.path, {
+          folder: "products",
+          public_id: `${uuidv4()}-${file.originalname}`,
+        });
+
+        // ✅ Delete local image after upload
+        await fs.promises.unlink(file.path);
+
+        return result.secure_url;
       })
     );
 
@@ -95,35 +78,6 @@ export const getProductById = async (req, res) => {
   }
 };
 
-/*
-export const updateProduct = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Check if product exists
-    const existingProduct = await Product.findById(id);
-    if (!existingProduct) {
-      return res.status(404).json({ message: "Product not found" });
-    }
-
-    // Update fields
-    const updatedProduct = await Product.findByIdAndUpdate(
-      id,
-      { $set: req.body },
-      { new: true, runValidators: true }
-    );
-
-    res.status(200).json({
-      message: "Product updated successfully",
-      product: updatedProduct,
-    });
-  } catch (error) {
-    console.error("Update Product Error:", error);
-    res.status(500).json({ message: "Server Error: " + error.message });
-  }
-};
-*/
-
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -136,9 +90,23 @@ export const updateProduct = async (req, res) => {
 
     const updateFields = { ...req.body };
 
+    // ✅ Handle new image uploads
     if (req.files && req.files.length > 0) {
-      const imagePaths = req.files.map((file) => file.location || file.path); // adjust based on S3 or local
-      updateFields.images = imagePaths;
+      const uploadedImageUrls = await Promise.all(
+        req.files.map(async (file) => {
+          const result = await cloudinary.uploader.upload(file.path, {
+            folder: "products",
+            public_id: `${uuidv4()}-${file.originalname}`,
+          });
+
+          // ✅ Delete local image after upload
+          await fs.promises.unlink(file.path);
+
+          return result.secure_url;
+        })
+      );
+
+      updateFields.images = uploadedImageUrls; // replace existing images
     }
 
     const updatedProduct = await Product.findByIdAndUpdate(
