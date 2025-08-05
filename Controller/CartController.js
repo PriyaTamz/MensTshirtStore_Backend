@@ -105,41 +105,20 @@ export const removeCartItem = async (req, res) => {
   }
 };
 
-export const syncCart = async (req, res) => {
+export const clearCart = async (req, res) => {
   try {
-    const { items } = req.body;
-    const userId = req.user.id;
-
-    let cart = await Cart.findOne({ user: userId });
+    const cart = await Cart.findOne({ user: req.user.id });
 
     if (!cart) {
-      cart = new Cart({ user: userId, items: [] });
+      return res.status(404).json({ message: "Cart not found" });
     }
 
-    // Merge logic
-    items.forEach((newItem) => {
-      const existing = cart.items.find(
-        (item) =>
-          item.product.toString() === newItem.productId &&
-          item.size === newItem.size
-      );
-
-      if (existing) {
-        existing.quantity += newItem.quantity;
-      } else {
-        cart.items.push({
-          product: newItem.productId,
-          size: newItem.size,
-          quantity: newItem.quantity,
-        });
-      }
-    });
-
+    cart.items = []; // Clear all items from the cart
     cart.updatedAt = Date.now();
     await cart.save();
 
-    res.status(200).json({ message: "Cart synced successfully", cart });
-  } catch (err) {
-    res.status(500).json({ message: "Cart sync failed", error: err.message });
+    res.status(200).json({ message: "Cart cleared successfully", cart });
+  } catch (error) {
+    res.status(500).json({ message: "Error clearing cart: " + error.message });
   }
 };
