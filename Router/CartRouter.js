@@ -9,6 +9,6 @@ cartRouter.post("/add", isAuthenticated, authorizeRoles('user'), addToCart);
 cartRouter.put("/update", isAuthenticated, authorizeRoles('user'), updateCartItem); 
 cartRouter.post("/remove",isAuthenticated, authorizeRoles('user'), removeCartItem);
 
-cartRouter.post("/clear", isAuthenticated, authorizeRoles('user'), clearCart);
+cartRouter.delete("/clear", isAuthenticated, authorizeRoles('user'), clearCart);
 
 export default cartRouter;
