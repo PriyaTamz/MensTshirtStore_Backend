@@ -13,6 +13,7 @@ export const getCart = async (req, res) => {
 
 export const addToCart = async (req, res) => {
   try {
+    console.log("userId from req.user:", req.user);
     const userId = req.user.id;
     const { productId, size, color, quantity } = req.body;
 
@@ -62,7 +63,7 @@ export const updateCartItem = async (req, res) => {
   try {
     const { productId, size, color, quantity } = req.body;
 
-    if (!productId || !size || !color || !quantity) {
+    if (!productId || !quantity) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
