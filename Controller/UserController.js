@@ -179,7 +179,7 @@ export const forgotPassword = async (req, res) => {
       },
     });
 
-    const resetUrl = `http://localhost:5173/reset-password/${token}`;
+    const resetUrl = `https://styleandstore.netlify.app/reset-password/${token}`;
     await transporter.sendMail({
       to: user.email,
       subject: "Password Reset",
