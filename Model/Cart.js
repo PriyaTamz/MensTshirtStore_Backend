@@ -13,7 +13,7 @@ const cartSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-cartSchema.index({ user: 1 }, { unique: true });
+//cartSchema.index({ user: 1 }, { unique: true });
 
 const Cart = mongoose.model("Cart", cartSchema, "carts");
 export default Cart;
