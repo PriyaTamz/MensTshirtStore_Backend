@@ -245,12 +245,14 @@ export const userLogout = async (req, res) => {
 
 export const checkAuthStatus = async (req, res) => {
   try {
-    const token = req.cookies.token;
-
+    // Check both cookie and authorization header
+    const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
+    
     if (!token) {
       return res.status(200).json({
         success: false,
         isAuthenticated: false,
+        message: "No token provided"
       });
     }
 
@@ -261,28 +263,27 @@ export const checkAuthStatus = async (req, res) => {
       return res.status(200).json({
         success: false,
         isAuthenticated: false,
+        message: "User not found"
       });
     }
 
     res.status(200).json({
       success: true,
       isAuthenticated: true,
-      data: {
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          isVerified: user.isVerified,
-        },
-      },
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role
+      }
     });
   } catch (error) {
     res.status(200).json({
       success: false,
       isAuthenticated: false,
+      message: "Invalid or expired token"
     });
   }
 };
