@@ -17,7 +17,7 @@ const app = express();
 // Update CORS to allow frontend origin
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"], // Allow frontend origins
+    origin: ["http://localhost:5173", "https://styleandstore.netlify.app"], // Allow frontend origins
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
