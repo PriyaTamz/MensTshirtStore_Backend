@@ -180,15 +180,21 @@ export const forgotPassword = async (req, res) => {
     });
 
     const resetUrl = `https://styleandstore.netlify.app/reset-password/${token}`;
+
     await transporter.sendMail({
+      from: `"Style & Store Support" <${process.env.EMAIL_USER}>`,
       to: user.email,
       subject: "Password Reset",
-      html: `<p>Click <a href="${resetUrl}">here</a> to reset your password</p>`,
+      html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. This link expires in 1 hour.</p>`,
     });
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("Reset URL:", resetUrl);
+    }
 
     res.status(200).json({
       message: "Reset email sent",
-      token, 
+      token,
       resetUrl,
     });
   } catch (err) {
@@ -246,13 +252,13 @@ export const userLogout = async (req, res) => {
 export const checkAuthStatus = async (req, res) => {
   try {
     // Check both cookie and authorization header
-    const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
-    
+    const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+
     if (!token) {
       return res.status(200).json({
         success: false,
         isAuthenticated: false,
-        message: "No token provided"
+        message: "No token provided",
       });
     }
 
@@ -263,7 +269,7 @@ export const checkAuthStatus = async (req, res) => {
       return res.status(200).json({
         success: false,
         isAuthenticated: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
@@ -276,14 +282,14 @@ export const checkAuthStatus = async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         phone: user.phone,
-        role: user.role
-      }
+        role: user.role,
+      },
     });
   } catch (error) {
     res.status(200).json({
       success: false,
       isAuthenticated: false,
-      message: "Invalid or expired token"
+      message: "Invalid or expired token",
     });
   }
 };

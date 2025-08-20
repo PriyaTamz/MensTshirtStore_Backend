@@ -53,18 +53,10 @@ export const adminLogin = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    /*res.cookie("adminToken", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
-    });*/
-
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false, // true in production
-      sameSite: "Lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      secure: true,
+      sameSite: "None"
     });
 
     res.status(200).json({
@@ -82,19 +74,29 @@ export const adminLogin = async (req, res) => {
 
 // Logout
 export const adminLogout = (req, res) => {
-  res.cookie("adminToken", "", {
-    httpOnly: true,
-    expires: new Date(0),
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  });
-  res.status(200).json({ message: "Admin logged out successfully" });
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Admin Logged out successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Logout failed: " + error.message,
+    });
+  }
 };
 
 // Check Auth
 export const checkAdminAuth = async (req, res) => {
   try {
-    const token = req.cookies.adminToken;
+    const token = req.cookies.token;
     if (!token)
       return res
         .status(401)
