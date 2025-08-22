@@ -7,6 +7,8 @@ import crypto from "crypto";
 
 export const checkoutOrder = async (req, res) => {
   try {
+    console.log("🔹 req.user:", req.user);
+
     const { addressId, method } = req.body;
 
     if (!addressId || !method) {
@@ -15,40 +17,49 @@ export const checkoutOrder = async (req, res) => {
         .json({ message: "Address and method are required" });
     }
 
+    // Validate address
     const address = await Address.findOne({
       _id: addressId,
       user: req.user.id,
     });
+    console.log("🔹 Address found:", address);
     if (!address) {
       return res.status(404).json({ message: "Address not found" });
     }
 
+    // Fetch cart and populate products
     const cart = await Cart.findOne({ user: req.user.id }).populate(
       "items.product"
     );
+    console.log("🔹 Cart found:", cart);
     if (!cart || cart.items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
 
+    // Map cart items
     const cartItems = cart.items.map((item) => ({
       productId: item.product._id,
       title: item.product.title,
       price: item.product.price,
       quantity: item.quantity,
       size: item.size,
+      color: item.color,
     }));
 
     const totalAmount = cart.items.reduce(
       (sum, item) => sum + item.product.price * item.quantity,
       0
     );
+    console.log("🔹 Total amount:", totalAmount);
 
+    // Prepare order data
     const orderData = {
       user: req.user.id,
       address: address._id,
-      cartItems: cart.items.map((item) => ({
-        productId: item.product._id,
+      cartItems: cartItems.map((item) => ({
+        productId: item.productId,
         size: item.size,
+        color: item.color,
         quantity: item.quantity,
       })),
       totalAmount,
@@ -56,20 +67,30 @@ export const checkoutOrder = async (req, res) => {
       status: method === "cod" ? "Pending" : "Initiated",
     };
 
+    // Create Razorpay order if needed
     if (method === "razorpay") {
+      if (!razorpayInstance) {
+        return res
+          .status(500)
+          .json({ message: "Razorpay instance not initialized" });
+      }
+
       const razorpayOrder = await razorpayInstance.orders.create({
-        amount: totalAmount * 100,
+        amount: Math.round(totalAmount * 100), // in paise, integer
         currency: "INR",
         receipt: `order_rcptid_${Date.now()}`,
       });
+      console.log("🔹 Razorpay order created:", razorpayOrder);
 
       orderData.razorpayOrderId = razorpayOrder.id;
     }
 
+    // Save order in DB
     const order = await Order.create(orderData);
+    console.log("🔹 Order created:", order._id);
 
     res.status(200).json({
-      message: "Order created",
+      message: "Order created successfully",
       orderId: order._id,
       method,
       razorpayOrderId: order.razorpayOrderId || null,
@@ -77,7 +98,12 @@ export const checkoutOrder = async (req, res) => {
       totalAmount,
     });
   } catch (error) {
-    res.status(500).json({ message: "Checkout failed", error: error.message });
+    console.error("❌ Checkout error:", error);
+    res.status(500).json({
+      message: "Checkout failed",
+      error: error.message,
+      stack: error.stack,
+    });
   }
 };
 
@@ -129,10 +155,14 @@ export const verifyRazorpayPayment = async (req, res) => {
       { new: true }
     );
 
-    res.status(200).json({ message: "Payment verified and order confirmed", order });
+    res
+      .status(200)
+      .json({ message: "Payment verified and order confirmed", order });
   } catch (error) {
     console.error("Error during Razorpay verification:", error);
-    res.status(500).json({ message: "Payment verification failed", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Payment verification failed", error: error.message });
   }
 };
 
@@ -157,12 +187,29 @@ export const getUserOrders = async (req, res) => {
 export const getAllOrders = async (req, res) => {
   try {
     const orders = await Order.find()
-      .populate("user", "name email")
-      .populate("cartItems.productId", "name price image")
-      .populate("address")
+      .populate("user", "firstName lastName email phone")
+      .populate("cartItems.productId", "title price image")
+      .populate("address", "fullName address city state pincode phone")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, orders });
+    const ordersWithUserAddresses = await Promise.all(
+      orders.map(async (order) => {
+        let userAddresses = [];
+        if (order.user) {
+          userAddresses = await Address.find({ user: order.user._id }).select(
+            "fullName phone address city state pincode isDefault"
+          );
+        }
+        return {
+          ...order.toObject(),
+          user: order.user
+            ? { ...order.user.toObject(), addresses: userAddresses }
+            : null,
+        };
+      })
+    );
+
+    res.status(200).json({ success: true, orders: ordersWithUserAddresses });
   } catch (err) {
     console.error("Error fetching all orders:", err);
     res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -219,7 +266,6 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-
 export const returnProduct = async (req, res) => {
   try {
     const { orderId, productId, reason } = req.body;
@@ -239,11 +285,11 @@ export const returnProduct = async (req, res) => {
     const orderDate = new Date(order.createdAt);
     const today = new Date();
     const diffInDays = (today - orderDate) / (1000 * 60 * 60 * 24);
-    
+
     if (diffInDays > 7) {
-      return res
-        .status(400)
-        .json({ message: "Return period expired. You can only return within 7 days." });
+      return res.status(400).json({
+        message: "Return period expired. You can only return within 7 days.",
+      });
     }
 
     const item = order.cartItems.find(
@@ -255,14 +301,21 @@ export const returnProduct = async (req, res) => {
     }
 
     if (item.returnRequested) {
-      return res.status(400).json({ message: "Return already requested for this product" });
+      return res
+        .status(400)
+        .json({ message: "Return already requested for this product" });
     }
 
     item.returnRequested = true;
     item.returnReason = reason;
 
     await order.save();
-    res.status(200).json({ message: "Return request submitted successfully" });
+
+    // Return the updated order
+    res.status(200).json({
+      message: "Return request submitted successfully",
+      order, // <--- send back the updated order
+    });
   } catch (error) {
     res
       .status(500)
@@ -313,3 +366,4 @@ export const refundPayment = async (req, res) => {
     res.status(500).json({ message: "Refund failed", error: error.message });
   }
 };
+
